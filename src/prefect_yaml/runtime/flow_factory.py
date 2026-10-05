@@ -138,7 +138,7 @@ class PrefectFlowFactory(BaseModel):
         step_factory = PrefectStepFactory()
         step_tasks = {step.id: step_factory.create(step) for step in compiled.steps}
         manifest_file = self.manifest_path or default_manifest_path(compiled.name)
-        force_flag = bool(compiled.values.get("force"))
+        force_flag = bool(compiled.values.get("force") or compiled.values.get("force_rebuild"))
 
         @flow(
             name=compiled.name,
@@ -213,7 +213,8 @@ class PrefectFlowFactory(BaseModel):
                         logger.warning("Step '{}' failed, continuing: {}", step.id, exc)
                         results[step.id] = {"error": str(exc)}
 
-            manifest.save(manifest_file)
+            if any(step.cache.backend in ("manifest", "hybrid") for step in sorted_steps) and manifest.records:
+                manifest.save(manifest_file)
             return results
 
         return _flow_body

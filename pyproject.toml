@@ -38,6 +38,12 @@ packages = ["src/prefect_yaml"]
 line-length = 120
 target-version = "py312"
 
+[tool.ruff.lint]
+ignore = [
+    "BLE001",
+    "S110",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]

@@ -50,11 +50,9 @@ class ManifestCache(BaseModel):
         record = self.records.get(key)
         if record is None:
             return False
-        if record.fingerprint != fingerprint:
-            return False
         if code_version is not None and record.code_version != code_version:
             return False
-        return True
+        return record.fingerprint == fingerprint
 
     def get_output(self, key: str, output_field: str) -> Any:
         """Retrieve a specific output value from a cached record.

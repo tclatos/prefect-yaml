@@ -2,6 +2,21 @@
 
 from __future__ import annotations
 
+import os
+
+
+def _ensure_local_no_proxy() -> None:
+    current = os.environ.get("NO_PROXY", os.environ.get("no_proxy", ""))
+    parts = [p.strip() for p in current.split(",") if p.strip()]
+    for host in ("localhost", "127.0.0.1", "*********"):
+        if host not in parts:
+            parts.append(host)
+    joined = ",".join(parts)
+    os.environ["NO_PROXY"] = joined
+    os.environ["no_proxy"] = joined
+
+_ensure_local_no_proxy()
+
 from prefect_yaml.cache.manifest import ManifestCache, default_manifest_path
 from prefect_yaml.compiler.compiler import WorkflowCompiler
 from prefect_yaml.contracts.validator import InputSpec
