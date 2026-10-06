@@ -153,9 +153,8 @@ class PrefectFlowFactory(BaseModel):
                 step_inputs = _prepare_inputs(step.with_, results)
                 fp = compute_step_fingerprint(step.id, step_inputs)
 
-                if (
-                    step.cache.backend in ("manifest", "hybrid")
-                    and manifest.is_fresh(step.id, fingerprint=fp, force=force_flag)
+                if step.cache.backend in ("manifest", "hybrid") and manifest.is_fresh(
+                    step.id, fingerprint=fp, force=force_flag
                 ):
                     cached_out = manifest.get_output(step.id, "result")
                     results[step.id] = cached_out
@@ -275,7 +274,7 @@ def flow_from_yaml(
     merged_values = _merge_values(wf.defaults, {}, values or {})
     from prefect_yaml.contracts.validator import validate_workflow_inputs
 
-    validated_values = validate_workflow_inputs(wf.inputs, merged_values)
+    validated_values = validate_workflow_inputs(wf.inputs, merged_values, workflow_name=wf.name)
 
     spec = _to_workflow_spec(wf, candidates, default_registry, extra_values=validated_values)
     compiled = WorkflowCompiler().compile(spec, validated_values)

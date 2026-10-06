@@ -1,15 +1,14 @@
-"""Input contract specification, validation, and type coercion."""
+"""Input contract specification, validation, and dynamic model generation."""
 
 from __future__ import annotations
 
-import json
-import re
-from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
-from prefect_yaml.contracts.types import ContractType
+from prefect_yaml.dynamic_models.builder import (
+    build_model_from_spec,
+)
 
 
 class ContractValidationError(ValueError):
@@ -32,79 +31,31 @@ class InputSpec(BaseModel):
     model_config = {"extra": "allow"}
 
 
-def _coerce_value(value: Any, expected_type: str, items_type: str | None = None) -> Any:
-    norm_type = expected_type.lower()
-    if norm_type in (ContractType.ANY.value,):
-        return value
+def _format_pydantic_error(exc: ValidationError) -> str:
+    """Format Pydantic ValidationError into readable contract error messages."""
+    messages: list[str] = []
+    for err in exc.errors():
+        loc = ".".join(str(x) for x in err.get("loc", []))
+        msg = err.get("msg", "")
+        err_type = err.get("type", "")
 
-    if norm_type in (ContractType.STRING.value, ContractType.STR.value):
-        if value is None:
-            return None
-        return str(value)
-
-    if norm_type in (ContractType.INTEGER.value, ContractType.INT.value):
-        if isinstance(value, int) and not isinstance(value, bool):
-            return value
-        if isinstance(value, str):
-            val_strip = value.strip()
-            return int(val_strip)
-        return int(value)
-
-    if norm_type in (ContractType.FLOAT.value, ContractType.NUMBER.value):
-        if isinstance(value, (int, float)) and not isinstance(value, bool):
-            return float(value)
-        if isinstance(value, str):
-            val_strip = value.strip()
-            return float(val_strip)
-        return float(value)
-
-    if norm_type in (ContractType.BOOLEAN.value, ContractType.BOOL.value):
-        if isinstance(value, bool):
-            return value
-        if isinstance(value, str):
-            val_lower = value.strip().lower()
-            if val_lower in ("true", "1", "yes", "on"):
-                return True
-            if val_lower in ("false", "0", "no", "off"):
-                return False
-            raise ValueError(f"Cannot parse boolean from '{value}'")
-        return bool(value)
-
-    if norm_type == ContractType.PATH.value:
-        if value is None:
-            return None
-        return Path(str(value))
-
-    if norm_type == ContractType.LIST.value:
-        if isinstance(value, (list, tuple)):
-            items = list(value)
-        elif isinstance(value, str):
-            val_strip = value.strip()
-            if val_strip.startswith("[") and val_strip.endswith("]"):
-                try:
-                    items = json.loads(val_strip)
-                except Exception:
-                    items = [x.strip() for x in val_strip[1:-1].split(",") if x.strip()]
-            else:
-                items = [x.strip() for x in val_strip.split(",") if x.strip()]
+        if err_type == "missing":
+            messages.append(f"Missing required parameter '{loc}'.")
+        elif "literal" in err_type:
+            messages.append(f"Parameter '{loc}' must be one of allowed choices: {msg}.")
+        elif "greater_than" in err_type:
+            messages.append(f"Parameter '{loc}' value is below minimum: {msg}.")
+        elif "less_than" in err_type:
+            messages.append(f"Parameter '{loc}' value exceeds maximum: {msg}.")
+        elif "pattern" in err_type:
+            messages.append(f"Parameter '{loc}' value does not match pattern: {msg}.")
         else:
-            items = list(value)
+            messages.append(f"Parameter '{loc}': {msg}.")
 
-        if items_type:
-            return [_coerce_value(item, items_type) for item in items]
-        return items
-
-    if norm_type == ContractType.DICT.value:
-        if isinstance(value, dict):
-            return value
-        if isinstance(value, str):
-            return json.loads(value)
-        return dict(value)
-
-    return value
+    return " ".join(messages)
 
 
-def validate_input_value(param_name: str, value: Any, spec: InputSpec) -> Any:
+def validate_input_value(param_name: str, value: Any, spec: InputSpec | dict[str, Any]) -> Any:
     """Validate and coerce a single input value against its specification.
 
     Args:
@@ -115,71 +66,66 @@ def validate_input_value(param_name: str, value: Any, spec: InputSpec) -> Any:
     Returns:
         The validated and type-coerced value.
     """
+    spec_dict = (
+        spec.model_dump()
+        if isinstance(spec, BaseModel)
+        else dict(spec)
+        if isinstance(spec, dict)
+        else {"type": str(spec)}
+    )
+
     if value is None:
-        if spec.required:
+        if spec_dict.get("required"):
             raise ContractValidationError(f"Missing required parameter '{param_name}'.")
-        return spec.default
+        return spec_dict.get("default")
 
+    model = build_model_from_spec("SingleInputModel", {param_name: spec_dict})
     try:
-        coerced = _coerce_value(value, spec.type, items_type=spec.items_type)
-    except Exception as exc:
-        raise ContractValidationError(
-            f"Parameter '{param_name}' expected type '{spec.type}', but value '{value}' could not be coerced: {exc}"
-        ) from exc
-
-    if spec.choices is not None and coerced not in spec.choices:
-        raise ContractValidationError(
-            f"Parameter '{param_name}' must be one of {spec.choices}, got '{coerced}'."
-        )
-
-    if spec.minimum is not None and coerced < spec.minimum:
-        raise ContractValidationError(
-            f"Parameter '{param_name}' value {coerced} is below minimum {spec.minimum}."
-        )
-
-    if spec.maximum is not None and coerced > spec.maximum:
-        raise ContractValidationError(
-            f"Parameter '{param_name}' value {coerced} exceeds maximum {spec.maximum}."
-        )
-
-    if (
-        spec.regex is not None
-        and isinstance(coerced, (str, Path))
-        and not re.search(spec.regex, str(coerced))
-    ):
-        raise ContractValidationError(
-            f"Parameter '{param_name}' value '{coerced}' does not match pattern '{spec.regex}'."
-        )
-
-    return coerced
+        inst = model.model_validate({param_name: value})
+        return getattr(inst, param_name)
+    except ValidationError as exc:
+        raise ContractValidationError(_format_pydantic_error(exc)) from exc
 
 
 def validate_workflow_inputs(
-    inputs_specs: dict[str, InputSpec | dict[str, Any]],
+    inputs_specs: dict[str, Any] | str | type[BaseModel],
     raw_values: dict[str, Any],
+    *,
+    workflow_name: str = "Workflow",
 ) -> dict[str, Any]:
-    """Validate and coerce all input values for a workflow.
+    """Validate and coerce all input values for a workflow using dynamic Pydantic models.
 
     Args:
-        inputs_specs: Map of input names to their specifications.
+        inputs_specs: Map of input names to their specifications, or a Pydantic model / dotted path.
         raw_values: Merged raw values provided by defaults, presets, and CLI.
+        workflow_name: Name of the workflow for the generated model class.
 
     Returns:
         Validated dictionary containing coerced values.
     """
-    normalized_specs: dict[str, InputSpec] = {}
-    for name, spec in inputs_specs.items():
-        if isinstance(spec, InputSpec):
-            normalized_specs[name] = spec
-        elif isinstance(spec, dict):
-            normalized_specs[name] = InputSpec.model_validate(spec)
-        else:
-            normalized_specs[name] = InputSpec(description=str(spec))
+    if not inputs_specs:
+        return dict(raw_values)
 
-    validated_values: dict[str, Any] = dict(raw_values)
+    normalized_specs: dict[str, Any] = {}
+    if isinstance(inputs_specs, dict):
+        for name, spec in inputs_specs.items():
+            if isinstance(spec, BaseModel):
+                normalized_specs[name] = spec.model_dump()
+            elif isinstance(spec, dict):
+                normalized_specs[name] = spec
+            else:
+                normalized_specs[name] = {"type": str(spec)}
+        target_spec: Any = normalized_specs
+    else:
+        target_spec = inputs_specs
 
-    for name, spec in normalized_specs.items():
-        val = raw_values.get(name, spec.default)
-        validated_values[name] = validate_input_value(name, val, spec)
+    model = build_model_from_spec(f"{workflow_name}Inputs", target_spec)
 
-    return validated_values
+    try:
+        validated = model.model_validate(raw_values)
+        dumped = validated.model_dump()
+        result = dict(raw_values)
+        result.update(dumped)
+        return result
+    except ValidationError as exc:
+        raise ContractValidationError(_format_pydantic_error(exc)) from exc

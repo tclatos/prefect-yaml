@@ -139,9 +139,21 @@ inputs:
 - `bool` / `boolean` (`"true"`, `"false"`, `"1"`, `"0"`, `"yes"`, `"no"`)
 - `path` (coerced to `pathlib.Path`)
 - `enum` (validated against `choices`)
-- `list` (supports `items_type` coercion)
-- `dict`
+- `list` (supports `items_type` coercion or `list[T]`)
+- `dict` (or `dict[K, V]`)
 - `any`
+- Dotted Python model path (e.g. `my_package.models.MyModel`)
+
+### Reusing Python Pydantic Models
+Workflows can directly reference an existing Python Pydantic model for `inputs:`:
+
+```yaml
+workflows:
+  data_etl:
+    description: "ETL using existing Python Pydantic model"
+    inputs: my_package.models.PipelineConfig
+    run: my_package.tasks.run_etl
+```
 
 ### Parameter Precedence
 Values are resolved in strict priority:

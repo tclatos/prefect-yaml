@@ -61,12 +61,12 @@ class WorkflowDef(BaseModel):
     pipeline: list[PipelineStep] = Field(default_factory=list)
     cache: CacheSpec | str = Field(default_factory=CacheSpec)
     defaults: dict[str, Any] = Field(default_factory=dict)
-    inputs: dict[str, InputSpec | dict[str, Any]] = Field(default_factory=dict)
+    inputs: dict[str, Any] | str | type[BaseModel] = Field(default_factory=dict)
     params: dict[str, Any] = Field(default_factory=dict)
     presets: dict[str, dict[str, Any]] = Field(default_factory=dict)
     hidden: bool = False
 
-    model_config = {"populate_by_name": True}
+    model_config = {"populate_by_name": True, "arbitrary_types_allowed": True}
 
     def model_post_init(self, context: Any, /) -> None:
         """Merge legacy params into inputs."""
@@ -88,6 +88,12 @@ class WorkflowDef(BaseModel):
         if isinstance(self.cache, str):
             return CacheSpec(backend=self.cache)  # type: ignore[arg-type]
         return self.cache
+
+    def get_input_model(self) -> type[BaseModel]:
+        """Return the compiled Pydantic input model for this workflow."""
+        from prefect_yaml.dynamic_models.builder import build_model_from_spec
+
+        return build_model_from_spec(f"{self.name}Inputs", self.inputs)
 
 
 class StepSpec(BaseModel):
@@ -114,8 +120,16 @@ class WorkflowSpec(BaseModel):
     name: str
     description: str = ""
     defaults: dict[str, Any] = Field(default_factory=dict)
-    inputs: dict[str, InputSpec | dict[str, Any]] = Field(default_factory=dict)
+    inputs: dict[str, Any] | str | type[BaseModel] = Field(default_factory=dict)
     steps: list[StepSpec] = Field(default_factory=list)
+
+    model_config = {"populate_by_name": True, "arbitrary_types_allowed": True}
+
+    def get_input_model(self) -> type[BaseModel]:
+        """Return the compiled Pydantic input model for this workflow."""
+        from prefect_yaml.dynamic_models.builder import build_model_from_spec
+
+        return build_model_from_spec(f"{self.name}Inputs", self.inputs)
 
 
 class ResolvedWorkflowInvocation(BaseModel):

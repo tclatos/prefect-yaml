@@ -81,3 +81,22 @@ workflows:
 
     final_step = next(s for s in inv.workflow.steps if s.id == "final_step")
     assert final_step.wait_for == ["run_sub.step_b"]
+
+
+def test_resolve_workflow_with_python_pydantic_model() -> None:
+    """Workflow YAML directly referencing a Python Pydantic model for inputs."""
+    yaml_src = """
+workflows:
+  hybrid_etl:
+    inputs: tests.unit.test_contracts.PipelineConfig
+    defaults:
+      environment: dev
+    run: json.dumps
+"""
+    wfs = load_workflows(yaml_src)
+    inv = resolve_workflow_invocation("hybrid_etl", cli_overrides={"retries": "10"}, workflows=wfs)
+    assert inv.values["environment"] == "dev"
+    assert inv.values["retries"] == 10
+    # Single step auto-wiring wires fields from the Python Pydantic model
+    assert inv.workflow.steps[0].with_["environment"] == "${values.environment}"
+    assert inv.workflow.steps[0].with_["retries"] == "${values.retries}"

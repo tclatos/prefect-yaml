@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from pydantic import BaseModel
 
 from prefect_yaml.contracts.validator import (
     ContractValidationError,
@@ -85,3 +86,54 @@ def test_validate_workflow_inputs_batch() -> None:
     validated = validate_workflow_inputs(specs, raw)
     assert validated["batch_size"] == 25
     assert validated["name"] == "sample"
+
+
+class PipelineConfig(BaseModel):
+    """Sample Python Pydantic model for hybrid workflows."""
+
+    environment: str = "prod"
+    retries: int = 3
+
+
+def test_validate_workflow_inputs_with_python_model() -> None:
+    """Test validating workflow inputs using an existing Python Pydantic model."""
+    raw = {"environment": "staging", "retries": "5"}
+    validated = validate_workflow_inputs(PipelineConfig, raw, workflow_name="deploy")
+    assert validated["environment"] == "staging"
+    assert validated["retries"] == 5
+
+    # Also test via dotted path string
+    validated_dotted = validate_workflow_inputs(
+        "tests.unit.test_contracts.PipelineConfig",
+        {"environment": "dev"},
+        workflow_name="deploy",
+    )
+    assert validated_dotted["environment"] == "dev"
+    assert validated_dotted["retries"] == 3
+
+
+def test_workflow_def_get_input_model() -> None:
+    """Test get_input_model on WorkflowDef."""
+    from prefect_yaml.models.authoring import WorkflowDef
+
+    # From dict spec
+    wf = WorkflowDef(
+        name="test_etl",
+        inputs={
+            "workers": {"type": "int", "default": 4},
+            "source": {"type": "path", "required": True},
+        },
+        run="json.dumps",
+    )
+    model = wf.get_input_model()
+    assert "workers" in model.model_fields
+    assert "source" in model.model_fields
+
+    # From Python model directly
+    wf_hybrid = WorkflowDef(
+        name="test_hybrid",
+        inputs=PipelineConfig,
+        run="json.dumps",
+    )
+    model_hybrid = wf_hybrid.get_input_model()
+    assert model_hybrid is PipelineConfig

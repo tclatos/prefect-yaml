@@ -15,11 +15,20 @@ def _ensure_local_no_proxy() -> None:
     os.environ["NO_PROXY"] = joined
     os.environ["no_proxy"] = joined
 
+
 _ensure_local_no_proxy()
 
 from prefect_yaml.cache.manifest import ManifestCache, default_manifest_path
 from prefect_yaml.compiler.compiler import WorkflowCompiler
 from prefect_yaml.contracts.validator import InputSpec
+from prefect_yaml.dynamic_models import (
+    DynamicBaseModel,
+    ModelRegistry,
+    build_model_from_spec,
+    load_models_from_dict,
+    load_models_from_yaml,
+    resolve_type_hint,
+)
 from prefect_yaml.models.authoring import (
     ParamSpec,
     PipelineStep,
@@ -60,11 +69,13 @@ __all__ = [
     "CacheSpec",
     "CompiledStep",
     "CompiledWorkflow",
+    "DynamicBaseModel",
     "ExecutionSpec",
     "ForeachSpec",
     "InputSpec",
     "InvokeSpec",
     "ManifestCache",
+    "ModelRegistry",
     "ParamSpec",
     "PipelineStep",
     "PrefectFlowFactory",
@@ -81,13 +92,17 @@ __all__ = [
     "WorkflowExecutionError",
     "WorkflowRegistry",
     "WorkflowSpec",
+    "build_model_from_spec",
     "default_manifest_path",
     "execute_workflow",
     "flow_from_yaml",
+    "load_models_from_dict",
+    "load_models_from_yaml",
     "load_workflows",
     "parse_cli_overrides",
     "parse_workflows_from_dict",
     "registry",
+    "resolve_type_hint",
     "resolve_workflow_invocation",
     "workflow",
 ]

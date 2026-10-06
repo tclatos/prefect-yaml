@@ -207,14 +207,22 @@ def show(
         inputs_table.add_column("Choices / Constraints", style="dim")
         inputs_table.add_column("Description", style="white")
 
-        for pname, spec in wf.inputs.items():
-            ptype = getattr(spec, "type", "any")
-            preq = str(getattr(spec, "required", False))
-            pdef = str(getattr(spec, "default", "-"))
-            choices = getattr(spec, "choices", None)
-            constraints = f"choices={choices}" if choices else "-"
-            pdesc = getattr(spec, "description", "")
-            inputs_table.add_row(pname, ptype, preq, pdef, constraints, pdesc)
+        input_model = wf.get_input_model()
+        for fname, field_info in input_model.model_fields.items():
+            ann = field_info.annotation
+            ptype = getattr(ann, "__name__", str(ann)) if ann is not None else "any"
+            preq = str(field_info.is_required())
+            pdef = str(field_info.default) if not field_info.is_required() and field_info.default is not None else "-"
+
+            constraints_list: list[str] = []
+            for meta in field_info.metadata:
+                for attr in ("ge", "gt", "le", "lt", "pattern"):
+                    val = getattr(meta, attr, None)
+                    if val is not None:
+                        constraints_list.append(f"{attr}={val}")
+            constraints = ", ".join(constraints_list) if constraints_list else "-"
+            pdesc = field_info.description or ""
+            inputs_table.add_row(fname, ptype, preq, pdef, constraints, pdesc)
         console.print(inputs_table)
 
     if wf.presets:

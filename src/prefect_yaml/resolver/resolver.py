@@ -197,7 +197,8 @@ def _to_workflow_spec(
     if wf.run:
         target = _resolve_run_to_path(wf.run, all_workflows, reg)
         auto_with = {k: f"${{values.{k}}}" for k in wf.defaults}
-        for param_name in wf.inputs:
+        input_names = list(wf.get_input_model().model_fields.keys()) if wf.inputs else []
+        for param_name in input_names:
             if param_name not in auto_with:
                 auto_with[param_name] = f"${{values.{param_name}}}"
         if extra_values:
@@ -284,11 +285,9 @@ def resolve_workflow_invocation(
     from prefect_yaml.contracts.validator import ContractValidationError
 
     try:
-        validated_values = validate_workflow_inputs(wf.inputs, raw_values)
+        validated_values = validate_workflow_inputs(wf.inputs, raw_values, workflow_name=wf.name)
     except ContractValidationError as exc:
-        raise WorkflowResolutionError(
-            f"Workflow '{name_or_preset}' is missing required parameter(s): {exc}."
-        ) from exc
+        raise WorkflowResolutionError(f"Workflow '{name_or_preset}' is missing required parameter(s): {exc}.") from exc
 
     workflow_spec = _to_workflow_spec(wf, all_workflows, active_reg, extra_values=validated_values)
 
