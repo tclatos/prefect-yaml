@@ -281,7 +281,14 @@ def resolve_workflow_invocation(
     if force:
         raw_values["force"] = True
 
-    validated_values = validate_workflow_inputs(wf.inputs, raw_values)
+    from prefect_yaml.contracts.validator import ContractValidationError
+
+    try:
+        validated_values = validate_workflow_inputs(wf.inputs, raw_values)
+    except ContractValidationError as exc:
+        raise WorkflowResolutionError(
+            f"Workflow '{name_or_preset}' is missing required parameter(s): {exc}."
+        ) from exc
 
     workflow_spec = _to_workflow_spec(wf, all_workflows, active_reg, extra_values=validated_values)
 
