@@ -5,6 +5,8 @@
 `prefect-yaml` compiles human-readable, declarative YAML definitions into robust Prefect 3 `@flow` and `@task` DAGs. It eliminates Python orchestration boilerplate while bringing first-class typed contracts, automatic CLI parameter coercion, xxHash3 manifest-based incremental execution, and generic routing.
 
 ---
+DeepWiki generated documentation is available (might be not in sync): 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/tclatos/prefect-yaml)
 
 ## Key Features
 
